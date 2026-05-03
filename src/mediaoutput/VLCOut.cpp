@@ -237,10 +237,18 @@ public:
     }
     int start(VLCInternalData* data, int startPos) {
         if (data->vlcPlayer) {
-            libvlc_media_player_play(data->vlcPlayer);
-            if (startPos) {
-                MEDIA_PLAYER_SET_TIME(data->vlcPlayer, startPos);
+            if (startPos > 0) {
+                // Seek to the requested position via libvlc's :start-time
+                // media option, applied before play() so the decoder is
+                // initialized at the seek position. Calling set_time() after
+                // play() races with the decoder and freezes video while
+                // audio + clock keep advancing — the same documented libvlc
+                // behavior noted in AdjustSpeed below.
+                char opt[64];
+                snprintf(opt, sizeof(opt), ":start-time=%.3f", startPos / 1000.0);
+                libvlc_media_add_option(data->media, opt);
             }
+            libvlc_media_player_play(data->vlcPlayer);
             data->length = libvlc_media_player_get_length(data->vlcPlayer);
             return 0;
         }
