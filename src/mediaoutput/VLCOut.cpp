@@ -237,21 +237,16 @@ public:
     }
     int start(VLCInternalData* data, int startPos) {
         if (data->vlcPlayer) {
-            if (startPos > 0) {
-                // libvlc snapshots media options when the media is attached
-                // to a player. The media was already attached during load(),
-                // so adding :start-time now and calling set_media to
-                // re-attach the same media forces libvlc to re-read options.
-                // The alternative — set_time() after play() — races with the
-                // decoder and freezes video while audio + clock keep
-                // advancing (the documented libvlc behavior noted in
-                // AdjustSpeed below).
-                char opt[64];
-                snprintf(opt, sizeof(opt), ":start-time=%.3f", startPos / 1000.0);
-                libvlc_media_add_option(data->media, opt);
-                libvlc_media_player_set_media(data->vlcPlayer, data->media);
-            }
             libvlc_media_player_play(data->vlcPlayer);
+            if (startPos > 0) {
+                // libvlc 4 fast seek (b_fast=true) jumps to the nearest
+                // keyframe without the decoder reset that the precise seek
+                // (false) performs — that decoder reset is what freezes
+                // video in AdjustSpeed below. Off-by-a-keyframe is fine on
+                // start; the drift-correction rate adjustments converge
+                // local position to master within a few seconds.
+                libvlc_media_player_set_time(data->vlcPlayer, startPos, true);
+            }
             data->length = libvlc_media_player_get_length(data->vlcPlayer);
             return 0;
         }
