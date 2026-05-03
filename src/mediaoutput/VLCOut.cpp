@@ -238,15 +238,26 @@ public:
     int start(VLCInternalData* data, int startPos) {
         if (data->vlcPlayer) {
             if (startPos > 0) {
-                // Seek to the requested position via libvlc's :start-time
-                // media option, applied before play() so the decoder is
-                // initialized at the seek position. Calling set_time() after
-                // play() races with the decoder and freezes video while
-                // audio + clock keep advancing — the same documented libvlc
+                // libvlc reads media options when the media is attached to a
+                // player (NEW_FROM_MEDIA below), not at play time, so the
+                // :start-time option must be on the media object before
+                // attachment. Tear down and recreate media+player with the
+                // option set before NEW_FROM_MEDIA. Calling set_time() after
+                // play() instead would race with the decoder and freeze video
+                // while audio + clock keep advancing — the documented libvlc
                 // behavior noted in AdjustSpeed below.
+                libvlc_media_player_release(data->vlcPlayer);
+                libvlc_media_release(data->media);
+                data->vlcPlayer = nullptr;
+                data->media = nullptr;
+
+                data->media = LIBVLC_MEDIA_NEWPATH(vlcInstance, data->fullMediaPath.c_str());
                 char opt[64];
                 snprintf(opt, sizeof(opt), ":start-time=%.3f", startPos / 1000.0);
                 libvlc_media_add_option(data->media, opt);
+                data->vlcPlayer = LIBVLC_MEDIAPLAYER_NEW_FROM_MEDIA(vlcInstance, data->media);
+                libvlc_event_attach(libvlc_media_player_event_manager(data->vlcPlayer), STOPPINGENUM, stoppedEventCallBack, data);
+                libvlc_event_attach(libvlc_media_player_event_manager(data->vlcPlayer), libvlc_MediaPlayerOpening, startingEventCallBack, data);
             }
             libvlc_media_player_play(data->vlcPlayer);
             data->length = libvlc_media_player_get_length(data->vlcPlayer);
