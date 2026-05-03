@@ -264,7 +264,7 @@ public:
     void SyncSyncedSequence(const char* filename, int frameNumber, float secondsElapsed);
 
     void OpenSyncedMedia(const char* filename);
-    void StartSyncedMedia(const char* filename);
+    void StartSyncedMedia(const char* filename, float secondsElapsed = 0.0f);
     void StopSyncedMedia(const char* filename);
     void SyncSyncedMedia(const char* filename, int frameNumber, float secondsElapsed);
 

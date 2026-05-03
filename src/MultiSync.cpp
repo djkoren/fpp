@@ -2335,10 +2335,10 @@ void MultiSync::OpenSyncedMedia(const char* filename) {
     OpenMediaOutput(filename);
 }
 
-void MultiSync::StartSyncedMedia(const char* filename) {
-    LogDebug(VB_SYNC, "StartSyncedMedia(%s)\n", filename);
+void MultiSync::StartSyncedMedia(const char* filename, float secondsElapsed) {
+    LogDebug(VB_SYNC, "StartSyncedMedia(%s, %.2f)\n", filename, secondsElapsed);
 
-    StartMediaOutput(filename);
+    StartMediaOutput(filename, secondsElapsed);
 }
 
 /*
@@ -2418,7 +2418,11 @@ void MultiSync::ProcessSyncPacket(ControlPkt* pkt, int len, MultiSyncStats* stat
             stats->pktSyncMedOpen++;
             break;
         case SYNC_PKT_START:
-            StartSyncedMedia(spkt->filename);
+            secondsElapsed = spkt->secondsElapsed - m_remoteOffset;
+            if (secondsElapsed < 0)
+                secondsElapsed = 0.0;
+
+            StartSyncedMedia(spkt->filename, secondsElapsed);
             stats->pktSyncMedStart++;
             break;
         case SYNC_PKT_STOP:
