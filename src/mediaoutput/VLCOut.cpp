@@ -89,6 +89,11 @@ public:
 
     int lastDiff = -1; //initalize at -1ms so speedup/slowdown logic initally assumes we are slightly behind the master (most common)
     int rateDiff = 0;
+
+    // Set by start() when starting mid-video; the Playing-state event
+    // callback consumes it to issue a libvlc fast seek at the moment the
+    // player is guaranteed in playing state. One-shot: cleared after use.
+    int pendingStartTimeMs = 0;
 };
 
 static std::string currentMediaFilename;
@@ -145,6 +150,14 @@ static void startingEventCallBack(const struct libvlc_event_t* p_event, void* p_
 static void stoppedEventCallBack(const struct libvlc_event_t* p_event, void* p_data) {
     VLCInternalData* d = (VLCInternalData*)p_data;
     d->vlcOutput->Stopped();
+}
+static void playingEventCallBack(const struct libvlc_event_t* p_event, void* p_data) {
+    VLCInternalData* d = (VLCInternalData*)p_data;
+    int ms = d->pendingStartTimeMs;
+    if (ms > 0) {
+        d->pendingStartTimeMs = 0;
+        libvlc_media_player_set_time(d->vlcPlayer, ms, true);
+    }
 }
 
 class VLCManager {
@@ -225,6 +238,7 @@ public:
             data->vlcPlayer = LIBVLC_MEDIAPLAYER_NEW_FROM_MEDIA(vlcInstance, data->media);
             libvlc_event_attach(libvlc_media_player_event_manager(data->vlcPlayer), STOPPINGENUM, stoppedEventCallBack, data);
             libvlc_event_attach(libvlc_media_player_event_manager(data->vlcPlayer), libvlc_MediaPlayerOpening, startingEventCallBack, data);
+            libvlc_event_attach(libvlc_media_player_event_manager(data->vlcPlayer), libvlc_MediaPlayerPlaying, playingEventCallBack, data);
             data->length = libvlc_media_player_get_length(data->vlcPlayer);
 
             std::string cardType = getSetting("AudioCardType");
@@ -237,14 +251,21 @@ public:
     }
     int start(VLCInternalData* data, int startPos) {
         if (data->vlcPlayer) {
+            // libvlc 4 fast seek (b_fast=true) jumps to the nearest keyframe
+            // without the decoder reset that the precise seek (false)
+            // performs — that decoder reset is what freezes video in
+            // AdjustSpeed below. Off-by-a-keyframe is fine on start;
+            // drift-correction rate adjustments converge local to master
+            // within seconds.
+            //
+            // Issue the seek both immediately after play() AND from the
+            // Playing-state event callback. The immediate call works when
+            // libvlc has already advanced past Opening by the time we
+            // return; if not, the event-driven seek catches it. Same
+            // target both times — idempotent.
+            data->pendingStartTimeMs = startPos;
             libvlc_media_player_play(data->vlcPlayer);
             if (startPos > 0) {
-                // libvlc 4 fast seek (b_fast=true) jumps to the nearest
-                // keyframe without the decoder reset that the precise seek
-                // (false) performs — that decoder reset is what freezes
-                // video in AdjustSpeed below. Off-by-a-keyframe is fine on
-                // start; the drift-correction rate adjustments converge
-                // local position to master within a few seconds.
                 libvlc_media_player_set_time(data->vlcPlayer, startPos, true);
             }
             data->length = libvlc_media_player_get_length(data->vlcPlayer);
